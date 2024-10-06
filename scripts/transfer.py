@@ -45,7 +45,7 @@ _custom_logger = log.CustomLogger(logger=_logger)
 
 def config_args():  # 配置命令行参数
     unparsed_args = sys.argv[1:]  # 未解析的命令行参数
-
+    # /home/lgr/cloud_edge/MPDA/log/train_global_model_debug/checkpoint/model.ckpt.
     # parser 变量名按依赖顺序编号
     parser0 = argparse.ArgumentParser(add_help=False)
 
@@ -61,10 +61,9 @@ def config_args():  # 配置命令行参数
                                    help='本次运行的任务名，打印日志有时会记录作为提示信息，'
                                         '日志将被记录在 f"{project_path.log_fd}/{run_name}"')
         runconf_group.add_argument('-imf', '--init_model_fp', type=parse_fp,
-                                   default=osp.join(project_path.log_fd,
-                                                    'train_global_model_reduce-cat_sgd_lr1-decay0.1_emb9_worker1',
-                                                    'checkpoint', 'epoch', 'model.ckpt-1406271'),
+                                   default=osp.join(project_path.log_fd, 'checkpoint', 'best'),
                                    help='初始模型的绝对路径')
+        # default=osp.join(project_path.log_fd,'train_global_model_reduce-cat_sgd_lr1-decay0.1_emb9_worker1','checkpoint', 'epoch', 'model.ckpt-1406271')
 
     regis_run_conf()
 
@@ -96,7 +95,7 @@ def config_args():  # 配置命令行参数
         train_group = parser0.add_argument_group(*train_group_args)
         train_group.add_argument('-bs', '--batch_size', default=32, type=int,
                                  help='模型训练的 batch size')
-        train_group.add_argument('--train_epoches', default=1, type=int,
+        train_group.add_argument('--train_epoches', default=100, type=int,
                                  help='每次来外部数据，模型训练多少个 epoch')
 
     regis_train()
@@ -127,22 +126,22 @@ def config_args():  # 配置命令行参数
         dataset_group.add_argument('-ds', '--dataset', default='movielens', choices=('movielens', 'amazon'),
                                    help='使用的数据集')
         dataset_group.add_argument('--movie_genome_fp', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'genome-scores.csv'),
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'genome-scores.csv'),
                                    help='电影的硬编码 embedding 数据的路径')
         dataset_group.add_argument('-tdf', '--train_data_fd', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed',
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed',
                                                     'ts=1225642324_train'),
                                    help='训练集的绝对路径，默认在 project_path.data_fd 下找，召回用户的范围是该文件夹下的用户')
         dataset_group.add_argument('-edf', '--eval_data_fd', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed',
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed',
                                                     'ts=1225642324_test'),
                                    help='评估集的绝对路径，默认在 project_path.data_fd 下找')
         dataset_group.add_argument('-eulp', '--examined_user_list_fp', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed',
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed',
                                                     'ts=1225642324_user-intersect.json'),
                                    help='要给哪些用户跑算法，json 格式的文件，记录 user_id 的列表')
         dataset_group.add_argument('--mapping_fp', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed',
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed',
                                                     'movie2category.csv'),
                                    help='电影类别映射文件的路径，默认在 project_path.data_fd 下找')
         dataset_group.add_argument('-aup', '--all_users_fp', type=parse_fp, default=None,
@@ -165,6 +164,7 @@ def config_args():  # 配置命令行参数
 
     def regis_model1():
         model_group = parser1.add_argument_group(*model_group_args)
+        # TODO 这里都不冻结吗？那还算是微调吗？什么是微调
         if args.model == 'din':
             model_group.add_argument('-fe', '--freeze_embeddings', default=False, action='store_true',
                                      help='是否冻结 embedding 层')
@@ -325,6 +325,7 @@ def run_exp_for_a_user(args, user_id, msg, *, movie2categories=None, match_func=
                 shared_emb_config=shared_emb_config,
                 use_moving_statistics='always'
             )
+            # 根据参数决定是否冻结模型的某些部分，如嵌入层、批归一化层、前向网络和注意力机制。这通常用于微调时保持某些参数不变。
             if args.freeze_embeddings:
                 net.freeze_embeddings()
             if args.freeze_bn:
@@ -348,18 +349,21 @@ def run_exp_for_a_user(args, user_id, msg, *, movie2categories=None, match_func=
                                 use_moving_statistics='always')
         else:
             raise ValueError('Unrecognized model {}'.format(args.model))
+        
         # 构建训练图并加载初始模型
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=args.learning_rate)
         net.build_graph_(key='train', mode=tf.estimator.ModeKeys.TRAIN, device=args.device,
                          optimizer=optimizer, seed=args.tf_random_seed)
         net.switch_graph('train')
         net.saver.restore(net.session, args.init_model_fp)
+        # 构建评估图
         net.build_graph_(key='eval', mode=tf.estimator.ModeKeys.EVAL, device=args.device)
         net.load_from_to(from_key='train', to_key='eval')
+        # 构建被选择模型的计算图（放在 CPU 上以减少显存占用），并加载训练图中的参数
         net.build_graph_(key='selected', mode=tf.estimator.ModeKeys.EVAL, device='cpu')  # 被选择的模型，放 cpu 上，减少显存占用
         net.load_from_to(from_key='train', to_key='selected')
         _logger.info('模型构建并加载初始参数完成')
-
+        # 通过当前用户召回的其他用户
         matched_user_ids = match_func.get_match(user_id=user_id)
         _custom_logger.log_text('matched users:\n{}'.format(matched_user_ids), file_handler=meta_f)
         flush(meta_f)
@@ -475,7 +479,7 @@ def run_exp_for_a_user(args, user_id, msg, *, movie2categories=None, match_func=
             local_train_input_fn.reader.seek(0)
             model.train_by_net(net=net, input_fn=local_train_input_fn, train_steps=None)
         _pure_eval_local_and_save_log(_step='local&external_data_trained')
-
+        # 这里还没看
         # 消融实验，直接用召回的用户序列训练模型
         net.switch_graph('train')
         net.saver.restore(net.session, args.init_model_fp)
@@ -508,7 +512,7 @@ def run_exp_for_a_user(args, user_id, msg, *, movie2categories=None, match_func=
 
     return log_fd
 
-
+# 检查生成的日志是否完整？
 def is_log_complete(log_fd):
     if not log_fd.endswith(osp.sep):
         log_fd = log_fd + osp.sep
@@ -517,7 +521,7 @@ def is_log_complete(log_fd):
         testset_fp = osp.join(log_fd, 'testset.csv')
 
         def _check_for_file(_fp):
-            _is_file_complete = False  # 文件是否完整初始化为 False
+            _is_file_complete = False  # 文件是否完整  初始化为 False
 
             if gfile.Exists(_fp):
                 # noinspection PyTypeChecker
@@ -538,6 +542,7 @@ def main():
     args = config_args()
 
     # 获取日志记录的目录
+    # run_name = transfer_debug
     log_fd = osp.join(project_path.log_fd, args.run_name)  # 本次运行记录日志的根目录
     # 创建几个目录
     gfile.MakeDirs(log_fd)
@@ -574,6 +579,7 @@ def main():
     user_ids = user_id_slices[args.task_index]
     _logger.info('responsible users for current worker:\n{}'.format(user_ids))
 
+    # args.skip_exp 默认为False
     if not args.skip_exp and not is_worker_result_got:
         movies2categories = data.movielens.utils.load_category_mapping(args.mapping_fp)
         if args.dataset == 'movielens' and args.model == 'lr':

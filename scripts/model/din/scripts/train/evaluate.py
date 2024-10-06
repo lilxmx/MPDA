@@ -21,7 +21,7 @@ def evaluate_by_net(net, input_fn, **kwargs):
     return ret
 
 
-def evaluate(graph: tf.Graph, sess: tf.Session,
+def evaluate(graph: tf.compat.v1.Graph, sess: tf.compat.v1.Session,
              fea_ph: Dict[str, tf.Tensor], label_ph: tf.Tensor, outputs: Dict[str, tf.Tensor],
              input_fn, *,
              test_steps=None, capture_feat_names=(), verbose=False) -> Dict[str, np.ndarray]:

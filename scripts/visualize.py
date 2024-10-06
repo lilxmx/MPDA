@@ -79,7 +79,7 @@ def main():
         return _pos_movie_ids, _neg_movie_ids
 
     vis_pfd = osp.join(project_path.log_fd, 'visualize')
-    data_fd_raw = osp.join(project_path.data_fd, 'MovieLens', 'ml-20m')
+    data_fd_raw = osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m')
     data_fd = osp.join(data_fd_raw, 'processed')
     checkpoint_fp = '/root/Data-Sharing-Transfer/cloud_models/movielens_din/checkpoint/epoch/model.ckpt'
     os.makedirs(vis_pfd, exist_ok=True)
@@ -98,7 +98,7 @@ def main():
     movies_meta = dict(zip(list(movies_meta.movieId),
                            zip(list(movies_meta.title), list(movies_meta.genres))))
 
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     full_movie_emb_data = get_par(checkpoint_fp, 'embedding/movie_emb')
     for target_user_id in user_ids[:3]:
         target_fd = osp.join(run_fd, target_user_id)

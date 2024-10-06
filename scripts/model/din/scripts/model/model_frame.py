@@ -7,7 +7,8 @@ from abc import abstractmethod, ABC
 from typing import Dict
 from . import utils
 
-import tensorflow as tf
+import tensorflow._api.v2.compat.v1 as tf
+tf.disable_v2_behavior()
 
 
 class NetNotBuiltError(Exception):
@@ -84,15 +85,16 @@ class ModelFrame(ABC):
         return self._outputss[self._current_graph]
 
     @property
-    def session(self) -> tf.Session:
+    # tf.Session -> tf.compat.v1.Session()
+    def session(self) -> tf.compat.v1.Session(): # type: ignore
         return self._sessions[self._current_graph]
 
     @property
-    def saver(self) -> tf.train.Saver:
+    def saver(self) -> tf.compat.v1.train.Saver:
         return self._savers[self._current_graph]
 
     @property
-    def graph(self) -> tf.Graph:
+    def graph(self) -> tf.compat.v1.Graph:
         return self._graphs[self._current_graph]
 
     @property
@@ -116,6 +118,7 @@ class ModelFrame(ABC):
 
     def load_from_to(self, from_key, to_key):
         """encapsulation of load_from, load values from from_key to to_key
+        从一个图加载变量到另一个图。
         """
         tmp = self.current_graph
         self.switch_graph(key=to_key)
@@ -250,7 +253,7 @@ class ModelFrame(ABC):
         Keyword Args:
             passed to self.build_graph
         """
-        graph = tf.Graph()
+        graph = tf.compat.v1.Graph()
         with graph.as_default():
             if seed is not None:
                 tf.random.set_random_seed(seed)
@@ -264,7 +267,7 @@ class ModelFrame(ABC):
                                            params={'optimizer': optimizer, 'loss': loss})
                 session_config = tf.ConfigProto(allow_soft_placement=True,
                                                 gpu_options=tf.GPUOptions(allow_growth=True))
-                session = tf.Session(config=session_config)
+                session = tf.compat.v1.Session(config=session_config)
                 session.run(tf.global_variables_initializer())
                 saver = tf.train.Saver(max_to_keep=None)
 

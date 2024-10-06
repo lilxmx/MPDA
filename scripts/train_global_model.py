@@ -3,6 +3,15 @@
 # @Author  : islander
 # @File    : train_global_model.py
 # @Software: PyCharm
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = '4,5,6'
+# from tensorflow import ConfigProto
+import tensorflow._api.v2.compat.v1 as tf
+tf.disable_v2_behavior()
+# 动态占用显卡空间
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.InteractiveSession(config=config)
 
 import argparse
 import json
@@ -19,7 +28,6 @@ import train_utils
 import logging
 import model
 import config
-import tensorflow as tf
 import sys
 import os.path as osp
 import log
@@ -44,20 +52,22 @@ def config_args():  # 配置命令行参数
         runconf_group = parser0.add_argument_group(*run_conf_group_args)
         runconf_group.add_argument('-rands', '--tf_random_seed', default=3, type=int,
                                    help='随机数种子，除了 tensorflow，也会传给 numpy 等随机数包')
-        runconf_group.add_argument('--save_summary_steps', default=1000, type=int,
+        
+        runconf_group.add_argument('--save_summary_steps', default=500, type=int,
                                    help='每这么多代存储 tensorflow 官方实现的一些 summary')
         runconf_group.add_argument('--save_checkpoint_secs', default=None, type=int,
                                    help='每这么长时间存储一次检查点，save_checkpoint_steps 和 save_checkpoint_secs 必须恰指定一个')
         runconf_group.add_argument('--save_checkpoint_steps', default=1000, type=int,
                                    help='每这么多迭代存储一次检查点，save_checkpoint_steps 和 save_checkpoint_secs 必须恰指定一个')
+        
         runconf_group.add_argument('--keep_checkpoint_max', default=5, type=int,
                                    help='最多存储多少个检查点')
         runconf_group.add_argument('--keep_checkpoint_every_n_hours', default=1, type=int,
                                    help='每多少个小时保留一个检查点，保留的检查点不会因 keep_checkpoint_max 而删除')
         runconf_group.add_argument('--log_step_count_steps', default=25, type=int,
                                    help='每这么多代记录一次日志')
-        runconf_group.add_argument('--device', default='gpu', type=str,
-                                   help='运行设备，默认为 gpu')
+        runconf_group.add_argument('--device', default=['gpu:0','gpu:1','gpu:2'], nargs='+', type=str,
+                                   help='运行设备，默认为 gpu. python your_script.py --device gpu:0 gpu:1')
         runconf_group.add_argument('-rn', '--run_name', default='train_global_model_debug', type=str,
                                    help='本次运行的任务名，打印日志有时会记录作为提示信息，'
                                         '日志将被记录在 f"{project_path.log_fd}/{run_name}"')
@@ -84,7 +94,7 @@ def config_args():  # 配置命令行参数
                                  help='使用的优化器')
         train_group.add_argument('-bs', '--batch_size', default=32, type=int,
                                  help='模型训练的 batch size')
-        train_group.add_argument('--train_epoches', default=1, type=int,
+        train_group.add_argument('--train_epoches', default=200, type=int,
                                  help='模型训练多少个 epoch')
         train_group.add_argument('--loss', default='cross_entropy', type=str, choices=('cross_entropy', 'square'),
                                  help='损失函数')
@@ -92,6 +102,7 @@ def config_args():  # 配置命令行参数
 
     def regis_dataset():
         dataset_group = parser0.add_argument_group('dataset', '数据集相关参数')
+        # 将参数no_shuffle保存到变量shuffle中，如果用户使用了该参数，则值为false，否则为true；action表示参数被使用时应该执行的动作
         dataset_group.add_argument('--no_shuffle', dest='shuffle', action='store_false', default=True,
                                    help='训练时是否 shuffle 数据集，注，评估时不 shuffle')
         dataset_group.add_argument('--shuffle_cache_size', default=10000, type=int,
@@ -99,16 +110,16 @@ def config_args():  # 配置命令行参数
         dataset_group.add_argument('-ds', '--dataset', default='movielens', choices=('movielens', 'amazon'),
                                    help='使用的数据集')
         dataset_group.add_argument('-tdf', '--train_data_fd', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_train'),
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_train'),
                                    help='训练集的绝对路径，默认在 project_path.data_fd 下找')
         dataset_group.add_argument('-edf', '--eval_data_fd', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_test'),
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_test'),
                                    help='评估集的绝对路径，默认在 project_path.data_fd 下找')
         dataset_group.add_argument('--mapping_fp', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed', 'movie2category.csv'),
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed', 'movie2category.csv'),
                                    help='电影类别映射文件的路径，默认在 project_path.data_fd 下找')
         dataset_group.add_argument('--movie_genome_fp', type=parse_fp,
-                                   default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'genome-scores.csv'),
+                                   default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'genome-scores.csv'),
                                    help='电影的硬编码 embedding 数据的路径')
 
     regis_dataset()
@@ -121,7 +132,7 @@ def config_args():  # 配置命令行参数
         model_group.add_argument('-bn', '--batch_norm', default=None, choices=(None, 'bn'),
                                  help='是否使用 batchnorm')
     regis_model()
-
+    # parser中通过add_argument添加的所有参数格式来解析传入的命令行参数args
     args, unparsed_args = parser0.parse_known_args(args=unparsed_args, namespace=None)
 
     parser1 = argparse.ArgumentParser(add_help=False)
@@ -137,12 +148,12 @@ def config_args():  # 配置命令行参数
 
     run_conf_group1 = parser1.add_argument_group(*run_conf_group_args)
     run_conf_group1.add_argument('-dt', '--distribute', type=str,
-                                 default='OneDeviceStrategy',
-                                 choices=('OneDeviceStrategy', 'ParameterServerStrategy'),
-                                 help='分布策略，默认单机训练，可选参数服务器架构训练')
+                                 default='MirroredStrategy',
+                                 choices=('OneDeviceStrategy', 'ParameterServerStrategy', 'MirroredStrategy'),
+                                 help='分布策略，默认单机[多卡]训练，可选参数服务器架构训练')
 
     args, unparsed_args = parser1.parse_known_args(args=unparsed_args, namespace=args)
-
+    # 这个地方没有传入参数？好像没有实际意义。上面已经解析结束了，再将两个解析器合并再次解析的结果也是一样
     parser_help = argparse.ArgumentParser(parents=[parser0, parser1], description='训练一个全局模型')
     parser_help.parse_known_args()
 
@@ -165,6 +176,7 @@ def main():
     for fd in [txt_fd, checkpoint_fd, tensorboard_fd]:
         gfile.MakeDirs(fd)
     # 这几个文件，传 None 表示不写
+    # is_chief 默认情况下为true
     is_chief = args.job_name == 'worker' and args.task_index == 0
     if is_chief:
         meta_f = gfile.GFile(osp.join(txt_fd, 'meta_{}.txt'.format(entry_time)), 'a')  # 用于记录一些运行基本信息
@@ -177,7 +189,7 @@ def main():
     else:
         eval_testset_log_f = None
 
-    def flush_all():  # 刷新所有文件
+    def flush_all():  # 刷新所有文件,flush()方法会将内部缓冲区的数据立即写入文件，确保数据不会因为程序崩溃或其他原因而丢失。
         for f in [meta_f, train_log_f, eval_testset_log_f]:
             if f is not None:
                 f.flush()
@@ -203,13 +215,14 @@ def main():
         _logger.info('获取 estimator_config 成功')
 
         log_responsible_fns = gfile.GFile(osp.join(txt_fd, 'train_fns_{}.txt'.format(args.task_index)), 'w') if args.job_name == 'worker' else None
-        # 确定输入配置
+        # 确定输入配置, 默认movielens
         if args.dataset == 'movielens':
             config_pkg = config.movielens
         elif args.dataset == 'amazon':
             config_pkg = config.amazon
         else:
             raise ValueError('Unrecognized dataset {}'.format(args.dataset))
+        # 默认是din
         if args.model == 'din':
             config_pkg = config_pkg.din
         elif args.model == 'lr':
@@ -222,6 +235,7 @@ def main():
             config_pkg = config_pkg.pnn
         else:
             raise ValueError('unrecognized args.model = {}'.format(args.model))
+        # feature config 记录了每个特征的处理方式,是一个字典
         fea_config = deepcopy(config_pkg.FEA_CONFIG)
         shared_emb_config = deepcopy(config_pkg.SHARED_EMB_CONFIG)
 
@@ -343,4 +357,5 @@ def main():
 
 
 if __name__ == '__main__':
+    # os.environ["CUDA_VISIBLE_DEVICES"] = str(6)
     main()

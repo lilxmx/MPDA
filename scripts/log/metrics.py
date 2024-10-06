@@ -181,7 +181,7 @@ def gauc(labels, probs, user_ids):
 
 
 def get_metrics(evaluation_result, metrics):
-    """获取评估的各个结果
+    """自动获取评估指标的各个结果
 
     Args:
         evaluation_result (dict): 评估结果字典，包括预测概率等值
@@ -196,6 +196,7 @@ def get_metrics(evaluation_result, metrics):
     # 顺序记录各个 metric 和函数的对应
     metric_dict = OrderedDict()
     for metric_name in metrics:
+        # 通过 globals() 检查每个指标名称是否对应一个已定义的函数。如果某个函数不存在，则抛出 ValueError
         if metric_name not in globals():
             raise ValueError('metric {} not found'.format(metric_name))
 

@@ -21,6 +21,7 @@ def rating_data(data_fp):
     with gfile.GFile(data_fp, 'r') as f:
         heading = f.readline().strip().split(',')
         heading = {name: idx for idx, name in enumerate(heading)}
+        # {'userId': 0, 'movieId': 1, 'rating': 2, 'timestamp': 3}
         user_id_col = heading['userId']
         movie_id_col = heading['movieId']
         rating_col = heading['rating']
@@ -30,7 +31,7 @@ def rating_data(data_fp):
         for line in f:
             line = line.strip().split(',')
             user_id = line[user_id_col]
-            if cache and user_id != cache[0][0]:  # 上一个用户的数据读完了
+            if cache and user_id != cache[0][0]:  # 上一个用户的数据读完了,主要是user_id != 之前的用户ID。交互表中的记录是按照user_id排序的
                 yield cache[0][0], cache
                 cache.clear()
             line = [user_id, line[movie_id_col], line[rating_col], line[timestamp_col]]
@@ -46,9 +47,10 @@ def main():
     import argparse
     parser = argparse.ArgumentParser('预处理数据')
     parser.add_argument('--num_users', type=int, default=None, help='指定从数据集里取多少个用户，默认取全部')
-    args, _ = parser.parse_known_args()
 
-    input_data_fd = osp.join(project_path.data_fd, 'MovieLens', 'ml-20m')  # 输入文件的目录
+    args, _ = parser.parse_known_args()
+    # '/root/data/'
+    input_data_fd = osp.join(project_path.project_fd,'data', 'MovieLens', 'ml-20m')  # 输入文件的目录
     output_data_fd = osp.join(input_data_fd, 'processed')  # 输出文件的目录
     os.makedirs(output_data_fd, exist_ok=True)
 
@@ -61,8 +63,8 @@ def main():
 
         user_data.sort(key=lambda x: int(x[3]))  # 按时间戳排序
         with gfile.GFile(osp.join(output_data_fd, '{}.csv'.format(user_id)), 'w') as output_f:
-            movie_id_seq = []  # 维护评价过电影的序列
-            rating_seq = []  # 维护电影序列对应的评分序列
+            movie_id_seq = []  # 维护评价过的电影的序列
+            rating_seq = []  # 维护评价过的电影序列对应的评分序列
             for line in user_data:
                 user_id, movie_id, rating, timestamp = line
                 # 按 ${user_id},${movie_id},${movie_id_seq},${rating_seq},${rating},${timestamp} 构建一行
@@ -87,7 +89,7 @@ def main():
         heading = {name: idx for idx, name in enumerate(heading)}
         movie_id_col = heading['movieId']
         category_col = heading['genres']
-
+        # 像movie2category.csv文件中写入每个物品对应的类别id，格式为 1，22|234|111|432|64
         with gfile.GFile(osp.join(output_data_fd, 'movie2category.csv'), 'w') as output_f:
             for line in input_f:
                 movie_id = line[movie_id_col]
@@ -97,10 +99,10 @@ def main():
                     if category not in category_mapping:
                         category_mapping[category] = current_category_id
                         current_category_id += 1
-                categories = [str(category_mapping[category]) for category in categories]  # 转成 id
+                categories = [str(category_mapping[category]) for category in categories]  # 将类别名称转成 id
                 categories = CATEGORY_SPLIT.join(categories)
                 output_f.write(','.join([movie_id, categories]) + '\n')
-
+        # 将每个物品类别对应的id写入文件
         with gfile.GFile(osp.join(output_data_fd, 'category.csv'), 'w') as output_f:  # 写类别映射
             output_f = csv.writer(output_f)
             for category_name, category_id in category_mapping.items():

@@ -21,13 +21,13 @@ def config_args():
 
     parser = argparse.ArgumentParser(description='记录下同时有训练和测试数据的用户的列表，用 json 格式记录，按 int(user_id) 排序')
     parser.add_argument('-tfd', '--train_data_fd', type=parse_fp,
-                        default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_train'),
+                        default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_train'),
                         help='训练数据目录的绝对路径')
     parser.add_argument('-tefd', '--test_data_fd', type=parse_fp,
-                        default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_test'),
+                        default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_test'),
                         help='测试数据目录的绝对路径')
     parser.add_argument('-ofp', '--output_fp', type=parse_fp,
-                        default=osp.join(project_path.data_fd, 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_user-intersect.json'))
+                        default=osp.join(project_path.project_fd, 'data', 'MovieLens', 'ml-20m', 'processed', 'ts=1225642324_user-intersect.json'))
 
     args, unparsed_args = parser.parse_known_args()
 

@@ -8,25 +8,34 @@ import os.path as osp
 
 
 def get_estimator_config(args, checkpoint_fd):  # 获取 estimator 的 RunConfig
-    import tensorflow as tf
-
+    import tensorflow._api.v2.compat.v1 as tf
+    tf.disable_v2_behavior()
     distribution_dict = {
-        'ParameterServerStrategy': tf.contrib.distribute.ParameterServerStrategy(num_gpus_per_worker=1),
-        'OneDeviceStrategy': tf.contrib.distribute.OneDeviceStrategy(device=args.device),
+        # tf.contrib.distribute.ParameterServerStrategy(num_gpus_per_worker=1)
+        # tf.contrib.distribute.OneDeviceStrategy
+        # 'ParameterServerStrategy': tf.distribute.experimental.ParameterServerStrategy(cluster_resolver),
+        'MirroredStrategy': tf.distribute.MirroredStrategy(devices=args.device),
+        # 'OneDeviceStrategy': tf.distribute.OneDeviceStrategy(device=args.device),
     }
     # 获取 estimator 的 RunConfig，具体细节请参考 tensorflow 的 doc
     distribution = distribution_dict[args.distribute]
     session_config = tf.ConfigProto(allow_soft_placement=True,  # 允许自行判断放置的设备
                                     # log_device_placement=True,  # 打印每个变量所在的设备到日志
-                                    gpu_options=tf.GPUOptions(allow_growth=True))  # 若不设定该参数，会占用全部显存
+                                    gpu_options=tf.GPUOptions(allow_growth=True))  # 允许 GPU 内存按需增长，而不是一次性分配全部显存。
     estimator_config = tf.estimator.RunConfig(
         model_dir=checkpoint_fd,
         tf_random_seed=args.tf_random_seed,
+        # 指定多少步后保存一次摘要信息（summary）。摘要信息包括损失、准确率等指标，可用于 TensorBoard 监控
         save_summary_steps=args.save_summary_steps,
+        # 指定多少步后保存一次检查点（checkpoint）。检查点包含了模型变量的值，可以用于恢复训练或进行预测。
         save_checkpoints_steps=args.save_checkpoint_steps,
+        # 每这么长时间存储一次检查点
         save_checkpoints_secs=args.save_checkpoint_secs,
+        # 保留的最大检查点数量。当检查点数量超过此值时，旧的检查点将被删除。
         keep_checkpoint_max=args.keep_checkpoint_max,
+        # 每多少个小时保留一个检查点，保留的检查点不会因 keep_checkpoint_max 而删除
         keep_checkpoint_every_n_hours=args.keep_checkpoint_every_n_hours,
+        # 指定多少步后打印一次日志信息，包括全局步数和当前步的执行时间
         log_step_count_steps=args.log_step_count_steps,
         session_config=session_config,
         train_distribute=distribution,
@@ -94,7 +103,7 @@ def get_movielens_input_fn(data_fd, mapping_fp, *,
         slice_index: 从数据集切片中取第 $() 片
         batch_size: 训练批大小
         fea_config: 特征配置字典
-        mapping_fp (Union[str, Dict]): 电影类别映射文件的路径，或已经解析好的字典
+        mapping_fp (Union[str, Dict]): 电影到电影类别映射文件的路径，或已经解析好的字典
         data_fd: 数据所在目录，或者直接给定数据文件的路径
         shuffle: 是否 shuffle 数据集
         shuffle_cache_size: shuffle 数据集时的缓存大小
@@ -106,7 +115,7 @@ def get_movielens_input_fn(data_fd, mapping_fp, *,
     from tensorflow.python.platform import gfile
     import model
     from gutils import get_array_slice
-
+    # 如果是文件存放路径，则转化为字典；如果不是，则直接是字典
     if isinstance(mapping_fp, str):
         movie2categories = data.movielens.utils.load_category_mapping(mapping_fp)
     else:
@@ -131,8 +140,11 @@ def get_movielens_input_fn(data_fd, mapping_fp, *,
                 log_responsible_fns.write(fn + '\n')
             log_responsible_fns.flush()
         data_reader = data.movielens.DataReaderMultiple(
-            [osp.join(data_fd, fn) for fn in fns], movie_genomes=movie_genomes,
-            movie2categories=movie2categories, config=fea_config)
+            [osp.join(data_fd, fn) for fn in fns], 
+            movie_genomes=movie_genomes,
+            movie2categories=movie2categories, 
+            config=fea_config
+        )
     else:  # 单个文件
         assert slice_index == 0 and slice_count == 1
         data_reader = data.movielens.DataReader(data_fd, movie2categories, config=fea_config,

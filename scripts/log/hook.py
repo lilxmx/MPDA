@@ -20,7 +20,9 @@ from collections import OrderedDict
 from copy import deepcopy
 from pprint import pformat
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow._api.v2.compat.v1 as tf
+tf.disable_v2_behavior()
 from tensorflow.python.platform import gfile
 
 import os.path as osp
@@ -206,6 +208,7 @@ class SaveEpochCheckpointHook(tf.train.SessionRunHook):
 
     def end(self, session):
         global_step = session.run(tf.train.get_global_step())
+        # 保存模型权重
         save_path = self._saver.save(sess=session, global_step=global_step,
                                      save_path=osp.join(self._checkpoint_fd, 'model.ckpt'))
         _logger.info(f'epoch checkpoint saved into {save_path}')

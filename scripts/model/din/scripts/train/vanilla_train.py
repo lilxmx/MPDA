@@ -17,7 +17,7 @@ def train_by_net(net, **kwargs):
 
 
 def train(
-        sess: tf.Session,
+        sess: tf.compat.v1.Session,
         fea_ph: Dict[str, tf.Tensor], label_ph: tf.Tensor, outputs: Dict[str, tf.Tensor],
         input_fn,
         train_steps=None,
